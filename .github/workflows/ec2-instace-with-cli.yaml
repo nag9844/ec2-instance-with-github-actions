@@ -1,14 +1,39 @@
-name: Launch EC2 Instance
+name: Manage EC2 Instance
  
 on:
-  workflow_dispatch: # Trigger manually
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Action to perform'
+        required: true
+        default: 'launch'
+        type: choice
+        options:
+          - launch
+          - terminate
+      instance_id:
+        description: 'EC2 Instance ID (required for terminate)'
+        required: false
+        default: ''
+      ami_id:
+        description: 'AMI ID to use (only for launch)'
+        required: false
+        default: 'ami-0e35ddab05955cf57'
+      instance_type:
+        description: 'Instance type (only for launch)'
+        required: false
+        default: 't2.micro'
+      key_name:
+        description: 'Key pair name (only for launch)'
+        required: false
+        default: 'demo-key'
  
 jobs:
-  launch-ec2:
+  manage-ec2:
     runs-on: ubuntu-latest
  
     env:
-      AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
  
     steps:
       - name: Checkout code
@@ -22,21 +47,34 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
  
       - name: Launch EC2 Instance
-        id: ec2
+        if: ${{ github.event.inputs.action == 'launch' }}
+        id: launch
         run: |
           INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ami-0953476d60561c955 \ 
+            --image-id ${{ github.event.inputs.ami_id }} \
             --count 1 \
-            --instance-type t2.micro \
-            --key-name demo-key \
+            --instance-type ${{ github.event.inputs.instance_type }} \
+            --key-name ${{ github.event.inputs.key_name }} \
             --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=GitHubEC2}]' \
             --query 'Instances[0].InstanceId' \
             --output text)
  
-          echo "Instance launched: $INSTANCE_ID"
+          echo "Launched instance: $INSTANCE_ID"
           echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
  
-      - name: Wait for instance to run
+      - name: Wait for EC2 instance to run
+        if: ${{ github.event.inputs.action == 'launch' }}
         run: |
           aws ec2 wait instance-running --instance-ids $INSTANCE_ID
           echo "Instance $INSTANCE_ID is running"
+ 
+      - name: Terminate EC2 Instance
+        if: ${{ github.event.inputs.action == 'terminate' }}
+        run: |
+          if [ -z "${{ github.event.inputs.instance_id }}" ]; then
+            echo "Error: Instance ID is required for termination"
+            exit 1
+          fi
+ 
+          aws ec2 terminate-instances --instance-ids ${{ github.event.inputs.instance_id }}
+          echo "Termination initiated for instance: ${{ github.event.inputs.instance_id }}"
