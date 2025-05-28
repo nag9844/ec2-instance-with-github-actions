@@ -22,25 +22,27 @@ jobs:
 
       - name: Configure AWS Credentials
         run: |
-          aws configure
-          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws configure set region ap-south-1 # Replace with your desired region
+          aws configure set aws_access_key_id "${{ secrets.AWS_ACCESS_KEY_ID }}"
+          aws configure set aws_secret_access_key "${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          aws configure set region "ap-south-1" # Replace with your desired region
 
       - name: Create EC2 Instance
+        id: create_instance
         run: |
-          aws ec2 run-instances \
-            --image-id ami-084568db4383264d4 # Replace with your desired AMI ID
-            --instance-type t2.micro # Replace with your desired instance type
-            --key-name demo-key # Replace with your key pair name
-            --security-group-ids sg-abcdef1234567890 # Replace with your security group ID
-            --tag-specs '{"ResourceType":"instance","Tags":[{"Key":"Name","Value":"my-ec2-instance"}]}'
-            --count 1
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id "ami-084568db4383264d4" # Replace with your desired AMI ID
+            --instance-type "t2.micro" # Replace with your desired instance type
+            --key-name "demo-key" # Replace with your key pair name
+            --security-group-ids "sg-abcdef1234567890" # Replace with your security group ID
+            --tag-specs 'ResourceType=instance,TagSpecifications=[{ResourceType=instance,Tags=[{Key=Name,Value=my-ec2-instance}]}]' \
+            --count 1 \
+            --output json | jq -r '.Instances[0].InstanceId')
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_OUTPUT
 
-      - name: Print EC2 Instance Information
+      - name: Get EC2 Instance Information
         run: |
-          instance_id=$(aws ec2 describe-instances --instance-ids $(aws ec2 run-instances --output text | awk '{print $1}') | jq -r '.Reservations[0].Instances[0].InstanceId')
-          public_ip=$(aws ec2 describe-instances --instance-ids $instance_id | jq -r '.Reservations[0].Instances[0].PublicIpAddress')
+          instance_id="${{ steps.create_instance.outputs.INSTANCE_ID }}"
+          public_ip=$(aws ec2 describe-instances --instance-ids "$instance_id" --output json | jq -r '.Reservations[0].Instances[0].PublicIpAddress')
 
           echo "Instance ID: $instance_id"
           echo "Public IP Address: $public_ip"
