@@ -11,10 +11,6 @@ on:
         options:
           - launch
           - terminate
-      instance_id:
-        description: 'EC2 Instance ID (required for terminate)'
-        required: false
-        default: ''
       ami_id:
         description: 'AMI ID to use (only for launch)'
         required: false
@@ -27,6 +23,10 @@ on:
         description: 'Key pair name (only for launch)'
         required: false
         default: 'demo-key'
+      instance_id:
+        description: 'EC2 Instance ID (required for terminate)'
+        required: false
+        default: ''
  
 jobs:
   manage-ec2:
@@ -40,7 +40,7 @@ jobs:
         uses: actions/checkout@v4
  
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -55,7 +55,7 @@ jobs:
             --count 1 \
             --instance-type ${{ github.event.inputs.instance_type }} \
             --key-name ${{ github.event.inputs.key_name }} \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=GitHubEC2}]' \
+            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Demo-EC2}]' \
             --query 'Instances[0].InstanceId' \
             --output text)
  
