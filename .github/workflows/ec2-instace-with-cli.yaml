@@ -1,0 +1,44 @@
+name: Create EC2 Instance
+
+on:
+  workflow_dispatch: # Trigger manually
+
+jobs:
+  create_ec2:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install AWS CLI
+        run: |
+          curl "https://awscli.amazonaws.com/aws/latest/install" -o "install.sh"
+          chmod +x install.sh
+          sudo ./install.sh -i /usr/local/bin -b /usr/local/bin
+          aws --version
+
+      - name: Configure AWS Credentials
+        run: |
+          aws configure
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region ap-south-1 # Replace with your desired region
+
+      - name: Create EC2 Instance
+        run: |
+          aws ec2 run-instances \
+            --image-id ami-084568db4383264d4 # Replace with your desired AMI ID
+            --instance-type t2.micro # Replace with your desired instance type
+            --key-name demo-key # Replace with your key pair name
+            --security-group-ids sg-abcdef1234567890 # Replace with your security group ID
+            --tag-specs '{"ResourceType":"instance","Tags":[{"Key":"Name","Value":"my-ec2-instance"}]}'
+            --count 1
+
+      - name: Print EC2 Instance Information
+        run: |
+          instance_id=$(aws ec2 describe-instances --instance-ids $(aws ec2 run-instances | jq -r '.Instances[] | .InstanceId') | jq -r '.Reservations[0].Instances[0].InstanceId')
+          public_ip=$(aws ec2 describe-instances --instance-ids $instance_id | jq -r '.Reservations[0].Instances[0].PublicIpAddress')
+
+          echo "Instance ID: $instance_id"
+          echo "Public IP Address: $public_ip"
