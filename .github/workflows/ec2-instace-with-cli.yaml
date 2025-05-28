@@ -14,6 +14,8 @@ jobs:
       - name: Install AWS CLI
         run: |
           curl "https://awscli.amazonaws.com/aws/latest/install" -o "install.sh"
+          # Convert Windows line endings to Unix line endings
+          sed -i 's/\r$//' install.sh
           chmod +x install.sh
           sudo ./install.sh -i /usr/local/bin -b /usr/local/bin
           aws --version
@@ -37,7 +39,7 @@ jobs:
 
       - name: Print EC2 Instance Information
         run: |
-          instance_id=$(aws ec2 describe-instances --instance-ids $(aws ec2 run-instances | jq -r '.Instances[] | .InstanceId') | jq -r '.Reservations[0].Instances[0].InstanceId')
+          instance_id=$(aws ec2 describe-instances --instance-ids $(aws ec2 run-instances --output text | awk '{print $1}') | jq -r '.Reservations[0].Instances[0].InstanceId')
           public_ip=$(aws ec2 describe-instances --instance-ids $instance_id | jq -r '.Reservations[0].Instances[0].PublicIpAddress')
 
           echo "Instance ID: $instance_id"
