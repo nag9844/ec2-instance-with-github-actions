@@ -1,80 +1,95 @@
-name: Manage EC2 Instance
- 
+name: EC2 Instance Management
+
 on:
-  workflow_dispatch:
+  workflow_dispatch:  # Allows manual triggering
     inputs:
       action:
-        description: 'Action to perform'
+        description: 'Choose action'
         required: true
-        default: 'launch'
         type: choice
         options:
-          - launch
-          - terminate
+        - launch_ec2_instance
+        - terminate_ec2_instance
       ami_id:
-        description: 'AMI ID to use (only for launch)'
+        description: 'AMI ID to use (only for launch_ec2_instance)'
         required: false
-        default: 'ami-0e35ddab05955cf57'
+        default: 'ami-084568db4383264d4'
       instance_type:
-        description: 'Instance type (only for launch)'
+        description: 'Instance type (only for launch_ec2_instance)'
         required: false
         default: 't2.micro'
       key_name:
-        description: 'Key pair name (only for launch)'
+        description: 'Key pair name (only for launch_ec2_instance)'
         required: false
         default: 'demo-key'
-      instance_id:
-        description: 'EC2 Instance ID (required for terminate)'
+      instance_filter:
+        description: 'Filter for termination (GitHubEC2)'
         required: false
         default: ''
- 
+        type: string  
+        
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  manage-ec2:
+  create-instance:
+    if: ${{ github.event.inputs.action == 'launch_ec2_instance' }}
     runs-on: ubuntu-latest
- 
-    env:
-      AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
- 
+    outputs:
+      instance_ids: ${{ steps.create.outputs.instance_ids }}
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
- 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
- 
-      - name: Launch EC2 Instance
-        if: ${{ github.event.inputs.action == 'launch' }}
-        id: launch
-        run: |
-          INSTANCE_ID=$(aws ec2 run-instances \
-            --image-id ${{ github.event.inputs.ami_id }} \
-            --count 1 \
-            --instance-type ${{ github.event.inputs.instance_type }} \
-            --key-name ${{ github.event.inputs.key_name }} \
-            --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=Demo-EC2}]' \
-            --query 'Instances[0].InstanceId' \
-            --output text)
- 
-          echo "Launched instance: $INSTANCE_ID"
-          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
- 
-      - name: Wait for EC2 instance to run
-        if: ${{ github.event.inputs.action == 'launch' }}
-        run: |
-          aws ec2 wait instance-running --instance-ids $INSTANCE_ID
-          echo "Instance $INSTANCE_ID is running"
- 
-      - name: Terminate EC2 Instance
-        if: ${{ github.event.inputs.action == 'terminate' }}
-        run: |
-          if [ -z "${{ github.event.inputs.instance_id }}" ]; then
-            echo "Error: Instance ID is required for termination"
-            exit 1
-          fi
- 
-          aws ec2 terminate-instances --instance-ids ${{ github.event.inputs.instance_id }}
-          echo "Termination initiated for instance: ${{ github.event.inputs.instance_id }}"
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: arn:aws:iam::199570228070:role/oidc-demo-role
+        aws-region: us-east-1
+
+
+    - name: Launch EC2 Instance
+      if: ${{ github.event.inputs.options == 'launch_ec2_instance' }}
+      id: create
+      run: |
+        INSTANCE_ID=$(aws ec2 run-instances \
+          --image-id ${{ github.event.inputs.ami_id }} \
+          --instance-type ${{ github.event.inputs.instance_type }} \
+          --key-name ${{ github.event.inputs.key_name }} \
+          --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=GitHubEC2}]' \
+          --query 'Instances[0].InstanceId' \
+          --output text)
+        echo "Launched instance: $INSTANCE_ID"
+        echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+
+  delete-instance:
+    if: ${{ github.event.inputs.action == 'terminate_ec2_instance' }}
+    runs-on: ubuntu-latest    
+    steps:
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        role-to-assume: arn:aws:iam::199570228070:role/oidc-demo-role
+        aws-region: us-east-1
+
+    - name: Find Instances to Terminate
+      id: find-instances
+      run: |
+        INSTANCE_IDS=$(aws ec2 describe-instances \
+          --filters "Name=tag:Name,Values=${{ github.event.inputs.instance_filter }}" \
+                    "Name=instance-state-name,Values=running" \
+          --query 'Reservations[].Instances[].InstanceId' \
+          --output text)
+        
+        if [ -z "$INSTANCE_IDS" ]; then
+          echo "No instances found with filter: ${{ github.event.inputs.instance_filter }}"
+          exit 1
+        fi
+        
+        echo "Found instances: $INSTANCE_IDS"
+        echo "instance_ids=$INSTANCE_IDS" >> $GITHUB_OUTPUT
+
+    - name: Terminate EC2 Instances
+      run: |
+        aws ec2 terminate-instances \
+          --instance-ids ${{ steps.find-instances.outputs.instance_ids }}
+        echo "Terminated instances: ${{ steps.find-instances.outputs.instance_ids }}"
