@@ -69,7 +69,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v2
       with:
         role-to-assume: arn:aws:iam::199570228070:role/oidc-demo-role
-        aws-region: us-east-1
+        aws-region: ap-south-1
 
     - name: Find Instances to Terminate
       id: find-instances
