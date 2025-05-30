@@ -44,7 +44,7 @@ jobs:
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: arn:aws:iam::199570228070:role/oidc-demo-role
-        aws-region: us-east-1
+        aws-region: ap-south-1
 
 
     - name: Launch EC2 Instance
